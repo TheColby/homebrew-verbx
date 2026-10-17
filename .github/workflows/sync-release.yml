@@ -1,0 +1,60 @@
+name: Sync verbx release
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-verbx-release
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Fetch and verify latest release formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api repos/TheColby/verbx/releases/latest --jq .tag_name)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unsupported stable release tag: $TAG" >&2
+            exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          SOURCE_URL="https://github.com/TheColby/verbx/archive/refs/tags/${TAG}.tar.gz"
+          curl --fail --location --retry 3 "$SOURCE_URL" -o "$RUNNER_TEMP/source.tar.gz"
+          SOURCE_SHA256=$(sha256sum "$RUNNER_TEMP/source.tar.gz" | cut -d ' ' -f 1)
+          gh api "repos/TheColby/verbx/contents/packaging/homebrew/verbx.rb?ref=${TAG}" --jq .content | base64 --decode > "$RUNNER_TEMP/verbx.rb"
+          python3 - "$RUNNER_TEMP/verbx.rb" "$SOURCE_URL" "$SOURCE_SHA256" <<'PY'
+          import pathlib
+          import re
+          import sys
+          source, url, digest = sys.argv[1:]
+          formula = pathlib.Path(source).read_text()
+          for key, value in (("url", url), ("sha256", digest)):
+              formula, count = re.subn(r'^  ' + key + r' ".*"$', f'  {key} "{value}"', formula, count=1, flags=re.M)
+              if count != 1:
+                  raise SystemExit(f"Missing formula {key}")
+          pathlib.Path("Formula/verbx.rb").write_text(formula)
+          PY
+          ruby -c Formula/verbx.rb
+      - name: Publish formula update
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Formula/verbx.rb; then
+            echo "Formula already matches ${TAG}." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/verbx.rb
+          git commit -m "chore: update verbx formula for ${TAG}"
+          git push
+          echo "Updated formula to ${TAG}." >> "$GITHUB_STEP_SUMMARY"
