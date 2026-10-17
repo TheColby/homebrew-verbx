@@ -38,6 +38,14 @@ jobs:
           import sys
           source, url, digest = sys.argv[1:]
           formula = pathlib.Path(source).read_text()
+          # Older release tags predate the Pillow resource. Keep the tap's
+          # reviewed pin until the upstream formula includes its own resource.
+          if '  resource "pillow" do' not in formula:
+              current = pathlib.Path("Formula/verbx.rb").read_text()
+              pillow = re.search(r'^  resource "pillow" do\n.*?^  end\n', current, re.M | re.S)
+              if pillow is None:
+                  raise SystemExit("Missing required Pillow resource")
+              formula = formula.replace("  def install", pillow.group(0) + "\n  def install", 1)
           for key, value in (("url", url), ("sha256", digest)):
               formula, count = re.subn(r'^  ' + key + r' ".*"$', f'  {key} "{value}"', formula, count=1, flags=re.M)
               if count != 1:
