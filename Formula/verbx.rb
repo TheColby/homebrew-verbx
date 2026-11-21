@@ -215,14 +215,14 @@ class Verbx < Formula
 
   def install
     # Link to the versioned LLVM shared library used by llvmlite.
-    ENV["CMAKE_ARGS"] = "-DLLVM_DIR=#{Formula["llvm@22"].opt_lib}/cmake/llvm"
+    ENV["CMAKE_ARGS"] = "-DLLVM_DIR=#{formula_opt_lib("llvm@22")}/cmake/llvm"
     ENV["LLVMLITE_SHARED"] = "1"
     virtualenv_install_with_resources
   end
 
   test do
     assert_match "verbx", shell_output("#{bin}/verbx version")
-    system Formula["python@3.14"].opt_libexec/"bin/python", "-m", "pip",
+    system formula_opt_libexec("python@3.14")/"bin/python", "-m", "pip",
            "--python", libexec/"bin/python", "check"
     system libexec/"bin/python", "-c", <<~PYTHON
       import numpy as np
