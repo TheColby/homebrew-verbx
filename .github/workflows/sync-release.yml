@@ -29,6 +29,11 @@ jobs:
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           SOURCE_URL="https://github.com/TheColby/verbx/archive/refs/tags/${TAG}.tar.gz"
+          # Preserve reviewed install fixes when this release is already pinned.
+          if grep -Fqx "  url \"${SOURCE_URL}\"" Formula/verbx.rb; then
+            echo "Formula already pins ${TAG}; retaining dependency fixes." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           curl --fail --location --retry 3 "$SOURCE_URL" -o "$RUNNER_TEMP/source.tar.gz"
           SOURCE_SHA256=$(sha256sum "$RUNNER_TEMP/source.tar.gz" | cut -d ' ' -f 1)
           gh api "repos/TheColby/verbx/contents/packaging/homebrew/verbx.rb?ref=${TAG}" --jq .content | base64 --decode > "$RUNNER_TEMP/verbx.rb"
